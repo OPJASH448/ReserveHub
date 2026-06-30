@@ -4,7 +4,7 @@ const User = require('../src/models/User');
 const RoleLevel = require('../src/models/RoleLevel');
 const Organization = require('../src/models/Organization');
 const JoinRequest = require('../src/models/JoinRequest');
-const { findResolversForJoinRequest } = require('../src/utils/resolver');
+const { findResolversForJoinRequest, resolveRoleLevel } = require('../src/utils/resolver');
 
 jest.setTimeout(30000);
 
@@ -96,5 +96,77 @@ describe('Generic JoinRequest Resolver Engine', () => {
 
     const resolversRank0 = await findResolversForJoinRequest(requestRank0);
     expect(resolversRank0.length).toBe(0);
+  });
+
+  describe('resolveRoleLevel - Chain of Responsibility Upward Walking', () => {
+    let org;
+    let roleL0, roleL1, roleL2, roleL3;
+
+    beforeEach(async () => {
+      org = new Organization({
+        name: 'CoR Test Org',
+        type: 'testing',
+        status: 'active',
+        createdBy: new mongoose.Types.ObjectId()
+      });
+      await org.save();
+
+      // Chain: L0 (Rank 0) -> L1 (Rank 1) -> L2 (Rank 2) -> L3 (Rank 3)
+      roleL0 = await RoleLevel.create({ orgId: org._id, name: 'L0', rank: 0, parentRoleLevelId: null });
+      roleL1 = await RoleLevel.create({ orgId: org._id, name: 'L1', rank: 1, parentRoleLevelId: roleL0._id });
+      roleL2 = await RoleLevel.create({ orgId: org._id, name: 'L2', rank: 2, parentRoleLevelId: roleL1._id });
+      roleL3 = await RoleLevel.create({ orgId: org._id, name: 'L3', rank: 3, parentRoleLevelId: roleL2._id });
+    });
+
+    it('should resolve to parent in a simple 2-level chain (L1 requested, L0 has active user)', async () => {
+      const activeAdmin = await User.create({
+        name: 'Admin', email: 'admin@cor.com', passwordHash: 'hash',
+        orgId: org._id, roleLevelId: roleL0._id, status: 'active'
+      });
+
+      const resolvers = await resolveRoleLevel(org._id, roleL1._id);
+      expect(resolvers.length).toBe(1);
+      expect(resolvers[0]._id.toString()).toBe(activeAdmin._id.toString());
+    });
+
+    it('should walk up multiple ranks when intermediate parents have no active users (4-level chain)', async () => {
+      // Scenario: Request L3 (rank 3). Parent is L2 (rank 2).
+      // If L2 and L1 have no active users, resolution should walk up to L0 and find the active user there.
+      const activeL0 = await User.create({
+        name: 'L0 User', email: 'l0@cor.com', passwordHash: 'hash',
+        orgId: org._id, roleLevelId: roleL0._id, status: 'active'
+      });
+
+      // No active users at L2 or L1! Let's resolve for L3
+      const resolvers = await resolveRoleLevel(org._id, roleL3._id);
+      expect(resolvers.length).toBe(1);
+      expect(resolvers[0]._id.toString()).toBe(activeL0._id.toString());
+    });
+
+    it('should walk up to first available active level (e.g., L1 active, L2 inactive)', async () => {
+      const activeL1 = await User.create({
+        name: 'L1 User', email: 'l1@cor.com', passwordHash: 'hash',
+        orgId: org._id, roleLevelId: roleL1._id, status: 'active'
+      });
+      // Admin is also active, but L1 is closer to L3 (L3 -> L2 -> L1), so it should stop at L1
+      await User.create({
+        name: 'Admin', email: 'admin@cor.com', passwordHash: 'hash',
+        orgId: org._id, roleLevelId: roleL0._id, status: 'active'
+      });
+
+      const resolvers = await resolveRoleLevel(org._id, roleL3._id);
+      expect(resolvers.length).toBe(1);
+      expect(resolvers[0]._id.toString()).toBe(activeL1._id.toString());
+    });
+
+    it('should return empty if requested role is rank 0 itself', async () => {
+      await User.create({
+        name: 'Admin', email: 'admin@cor.com', passwordHash: 'hash',
+        orgId: org._id, roleLevelId: roleL0._id, status: 'active'
+      });
+
+      const resolvers = await resolveRoleLevel(org._id, roleL0._id);
+      expect(resolvers.length).toBe(0);
+    });
   });
 });
