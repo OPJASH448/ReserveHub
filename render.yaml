@@ -1,0 +1,19 @@
+services:
+  # Express API Web Service
+  - type: web
+    name: strata-api
+    env: node
+    plan: starter
+    buildCommand: npm install --prefix backend
+    startCommand: npm start --prefix backend
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        sync: false # Set in Render Dashboard (e.g. MongoDB Atlas Connection URI)
+      - key: ACCESS_TOKEN_SECRET
+        sync: false # Set in Render Dashboard
+      - key: REFRESH_TOKEN_SECRET
+        sync: false # Set in Render Dashboard
