@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const RoleLevelSchema = new mongoose.Schema({
-  orgId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true },
+  orgId: { type: mongoose.Schema.Types.ObjectId, ref: 'Org', required: true },
   name: { type: String, required: true, trim: true },
   rank: { type: Number, required: true }, // 0 is highest, increasing downward
   parentRoleLevelId: { type: mongoose.Schema.Types.ObjectId, ref: 'RoleLevel', default: null }

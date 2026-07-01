@@ -2,7 +2,7 @@ const bcrypt = require('bcryptjs');
 const JoinRequest = require('../models/JoinRequest');
 const User = require('../models/User');
 const RoleLevel = require('../models/RoleLevel');
-const Organization = require('../models/Organization');
+const Org = require('../models/Org');
 const { runWithTransaction } = require('../utils/transaction');
 const { findResolversForJoinRequest } = require('../utils/resolver');
 
@@ -14,7 +14,7 @@ const createJoinRequest = async (req, res) => {
   }
 
   try {
-    const org = await Organization.findById(orgId);
+    const org = await Org.findById(orgId);
     if (!org || org.status !== 'active') {
       return res.status(400).json({ error: 'Organization is not active or does not exist' });
     }
@@ -70,27 +70,31 @@ const createJoinRequest = async (req, res) => {
 };
 
 const getPendingRequestsForResolver = async (req, res) => {
-  const { orgId, roleLevelId } = req.user;
+  const { orgId, userId, roleLevelId } = req.user;
 
   if (!roleLevelId) {
     return res.status(403).json({ error: 'Access denied: User has no assigned role' });
   }
 
   try {
-    // 1. Find all role levels in this org where the parent is the current user's role
-    const targetRoles = await RoleLevel.find({ orgId, parentRoleLevelId: roleLevelId });
-    const targetRoleIds = targetRoles.map(r => r._id);
-
-    // 2. Fetch pending requests for those child role levels
+    // 1. Fetch all pending requests in the organization
     const requests = await JoinRequest.find({
       orgId,
-      status: 'pending',
-      requestedRoleLevelId: { $in: targetRoleIds }
+      status: 'pending'
     })
       .populate('userId', 'name email')
-      .populate('requestedRoleLevelId', 'name rank');
+      .populate('requestedRoleLevelId', 'name rank parentRoleLevelId');
 
-    res.json(requests);
+    // 2. Filter requests where the current user is in the set of eligible resolvers
+    const eligibleRequests = [];
+    for (const request of requests) {
+      const resolvers = await findResolversForJoinRequest(request);
+      if (resolvers.some(r => r._id.toString() === userId.toString())) {
+        eligibleRequests.push(request);
+      }
+    }
+
+    res.json(eligibleRequests);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch pending join requests' });
   }
@@ -115,13 +119,9 @@ const resolveJoinRequest = async (req, res) => {
       return res.status(403).json({ error: 'Access denied: Request belongs to another organization' });
     }
 
-    const requestedRole = await RoleLevel.findById(request.requestedRoleLevelId);
-    if (!requestedRole) {
-      return res.status(400).json({ error: 'Requested RoleLevel not found' });
-    }
-
-    // Verify permission: resolver's roleLevelId must match the requested role's parentRoleLevelId
-    if (!requestedRole.parentRoleLevelId || requestedRole.parentRoleLevelId.toString() !== resolverUser.roleLevelId.toString()) {
+    // Verify permission: resolverUser must be one of the active resolvers resolved by the CoR resolver
+    const resolvers = await findResolversForJoinRequest(request);
+    if (!resolvers.some(r => r._id.toString() === resolverUser.userId.toString())) {
       return res.status(403).json({ error: 'Access denied: You are not authorized to resolve this request' });
     }
 

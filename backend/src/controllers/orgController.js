@@ -1,11 +1,11 @@
-const Organization = require('../models/Organization');
+const Org = require('../models/Org');
 const User = require('../models/User');
 const RoleLevel = require('../models/RoleLevel');
 const { runWithTransaction } = require('../utils/transaction');
 
 const getPendingOrgs = async (req, res) => {
   try {
-    const orgs = await Organization.find({ status: 'pending' }).populate('createdBy', 'name email');
+    const orgs = await Org.find({ status: 'pending' }).populate('createdBy', 'name email');
     res.json(orgs);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch pending organizations' });
@@ -16,7 +16,7 @@ const approveOrg = async (req, res) => {
   const { orgId } = req.params;
 
   try {
-    const org = await Organization.findById(orgId);
+    const org = await Org.findById(orgId);
     if (!org) {
       return res.status(404).json({ error: 'Organization not found' });
     }
@@ -59,7 +59,7 @@ const rejectOrg = async (req, res) => {
   const { orgId } = req.params;
 
   try {
-    const org = await Organization.findById(orgId);
+    const org = await Org.findById(orgId);
     if (!org) {
       return res.status(404).json({ error: 'Organization not found' });
     }

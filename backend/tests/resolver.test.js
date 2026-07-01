@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 const dbHandler = require('./dbHandler');
 const User = require('../src/models/User');
 const RoleLevel = require('../src/models/RoleLevel');
-const Organization = require('../src/models/Organization');
+const Org = require('../src/models/Org');
 const JoinRequest = require('../src/models/JoinRequest');
 const { findResolversForJoinRequest, resolveRoleLevel } = require('../src/utils/resolver');
 
@@ -15,7 +15,7 @@ afterAll(async () => await dbHandler.closeDatabase());
 describe('Generic JoinRequest Resolver Engine', () => {
   it('should resolve join requests correctly using the parentRoleLevelId DAG pointers on a 5-level hierarchy', async () => {
     // 1. Create Organization
-    const org = new Organization({
+    const org = new Org({
       name: 'Test Org',
       type: 'generic',
       status: 'active',
@@ -103,7 +103,7 @@ describe('Generic JoinRequest Resolver Engine', () => {
     let roleL0, roleL1, roleL2, roleL3;
 
     beforeEach(async () => {
-      org = new Organization({
+      org = new Org({
         name: 'CoR Test Org',
         type: 'testing',
         status: 'active',

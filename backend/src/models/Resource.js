@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 
 const ResourceSchema = new mongoose.Schema({
-  orgId: { type: mongoose.Schema.Types.ObjectId, ref: 'Organization', required: true },
+  orgId: { type: mongoose.Schema.Types.ObjectId, ref: 'Org', required: true },
   name: { type: String, required: true, trim: true },
   description: { type: String, default: '' },
   maxAllowedRank: { type: Number, required: true }, // Authority ceiling (e.g. users with rank <= maxAllowedRank can book)

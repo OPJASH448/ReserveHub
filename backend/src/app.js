@@ -5,6 +5,8 @@ const authRoutes = require('./routes/auth');
 const orgRoutes = require('./routes/orgs');
 const roleRoutes = require('./routes/roles');
 const joinRequestRoutes = require('./routes/joinRequests');
+const resourceRoutes = require('./routes/resources');
+const bookingRoutes = require('./routes/bookings');
 
 const app = express();
 
@@ -17,6 +19,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/superadmin', orgRoutes);
 app.use('/api/roles', roleRoutes);
 app.use('/api/join-requests', joinRequestRoutes);
+app.use('/api/resources', resourceRoutes);
+app.use('/api/bookings', bookingRoutes);
 
 // Root path response
 app.get('/', (req, res) => {

@@ -5,7 +5,8 @@ const jwt = require('jsonwebtoken');
 const dbHandler = require('./dbHandler');
 const app = require('../src/app');
 const User = require('../src/models/User');
-const Organization = require('../src/models/Organization');
+const Org = require('../src/models/Org');
+const SuperAdmin = require('../src/models/SuperAdmin');
 const RoleLevel = require('../src/models/RoleLevel');
 const JoinRequest = require('../src/models/JoinRequest');
 
@@ -16,7 +17,6 @@ afterEach(async () => await dbHandler.clearDatabase());
 afterAll(async () => await dbHandler.closeDatabase());
 
 const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET || 'access_secret_12345';
-const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || 'refresh_secret_12345';
 
 describe('Strata Day 1 End-to-End API Integration', () => {
   let superAdminToken;
@@ -25,12 +25,10 @@ describe('Strata Day 1 End-to-End API Integration', () => {
   beforeEach(async () => {
     // Seed SuperAdmin
     const passwordHash = await bcrypt.hash('AdminPassword123!', 10);
-    superAdminUser = new User({
+    superAdminUser = new SuperAdmin({
       name: 'SuperAdmin',
       email: 'admin@strata.com',
-      passwordHash,
-      isSuperAdmin: true,
-      status: 'active'
+      passwordHash
     });
     await superAdminUser.save();
 
@@ -89,7 +87,7 @@ describe('Strata Day 1 End-to-End API Integration', () => {
     expect(approveRes.status).toBe(200);
 
     // Verify Organization is active, and Alice has role "OrgAdmin" at rank 0
-    const approvedOrg = await Organization.findById(orgId);
+    const approvedOrg = await Org.findById(orgId);
     expect(approvedOrg.status).toBe('active');
 
     const aliceUser = await User.findById(aliceId).populate('roleLevelId');
@@ -226,5 +224,90 @@ describe('Strata Day 1 End-to-End API Integration', () => {
     // Verify Charlie is rejected
     const charlieUser = await User.findOne({ email: 'charlie@acme.edu' });
     expect(charlieUser.status).toBe('rejected');
+  });
+
+  it('should support dynamic routing depth when intermediate levels have no active users (CoR walking)', async () => {
+    // 1. Register Org
+    const registerRes = await request(app)
+      .post('/api/auth/register-org')
+      .send({
+        orgName: 'Beta Corp',
+        orgType: 'corp',
+        userName: 'Alice Admin',
+        email: 'alice@beta.com',
+        password: 'AlicePassword123!'
+      });
+    const orgId = registerRes.body.orgId;
+    const aliceId = registerRes.body.userId;
+
+    // Approve organization
+    await request(app)
+      .post(`/api/superadmin/approve-org/${orgId}`)
+      .set('Authorization', `Bearer ${superAdminToken}`);
+
+    // Login Alice (L0 OrgAdmin)
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'alice@beta.com', password: 'AlicePassword123!' });
+    const aliceToken = loginRes.body.accessToken;
+
+    const aliceUser = await User.findById(aliceId).populate('roleLevelId');
+    const roleL0Id = aliceUser.roleLevelId._id;
+
+    // 2. Create 4-level hierarchy: L0 (OrgAdmin) -> L1 -> L2 -> L3
+    // Create L1 (Rank 1)
+    const resL1 = await request(app)
+      .post('/api/roles')
+      .set('Authorization', `Bearer ${aliceToken}`)
+      .send({ name: 'L1', parentRoleLevelId: roleL0Id });
+    const roleL1Id = resL1.body._id;
+
+    // Create L2 (Rank 2)
+    const resL2 = await request(app)
+      .post('/api/roles')
+      .set('Authorization', `Bearer ${aliceToken}`)
+      .send({ name: 'L2', parentRoleLevelId: roleL1Id });
+    const roleL2Id = resL2.body._id;
+
+    // Create L3 (Rank 3)
+    const resL3 = await request(app)
+      .post('/api/roles')
+      .set('Authorization', `Bearer ${aliceToken}`)
+      .send({ name: 'L3', parentRoleLevelId: roleL2Id });
+    const roleL3Id = resL3.body._id;
+
+    // 3. New user (Charlie) submits a JoinRequest for L3
+    const charlieJoinRes = await request(app)
+      .post('/api/join-requests')
+      .send({
+        orgId,
+        requestedRoleLevelId: roleL3Id,
+        userName: 'Charlie L3',
+        email: 'charlie@beta.com',
+        password: 'CharliePassword123!'
+      });
+    const charlieRequestId = charlieJoinRes.body.requestId;
+
+    // Note: No active users exist at L2 or L1!
+    // Alice (L0) checks pending requests. She should see Charlie's request (walking L3 -> L2 -> L1 -> L0)!
+    const alicePendingRes = await request(app)
+      .get('/api/join-requests/pending')
+      .set('Authorization', `Bearer ${aliceToken}`);
+    
+    expect(alicePendingRes.status).toBe(200);
+    expect(alicePendingRes.body.length).toBe(1);
+    expect(alicePendingRes.body[0]._id.toString()).toBe(charlieRequestId.toString());
+
+    // Alice approves Charlie
+    const aliceResolveRes = await request(app)
+      .post(`/api/join-requests/${charlieRequestId}/resolve`)
+      .set('Authorization', `Bearer ${aliceToken}`)
+      .send({ action: 'approve' });
+    expect(aliceResolveRes.status).toBe(200);
+
+    // Verify Charlie is now active and has L3 role
+    const charlieUser = await User.findOne({ email: 'charlie@beta.com' }).populate('roleLevelId');
+    expect(charlieUser.status).toBe('active');
+    expect(charlieUser.roleLevelId._id.toString()).toBe(roleL3Id.toString());
   });
 });

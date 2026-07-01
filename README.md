@@ -1,101 +1,104 @@
-# ReserveHub - Core System Design
+# ReserveHub - Core System Design & Implementation
 
-This document details the architecture, design choices, and data patterns for ReserveHub, a multi-tenant resource booking and access control platform.
+This repository contains the backend engine for **ReserveHub**, a multi-tenant resource booking and access control platform.
 
 ---
 
-## 1. System Diagram
+## 1. Architecture Overview
 
 ```
 [Client: React/RTK] → [Express API]
-                          ├── /auth (JWT)
-                          ├── /superadmin/orgs  (org approval, factory → rank-0 RoleLevel)
-                          ├── /org/:id/role-levels (CRUD, OrgAdmin-only)
-                          ├── /org/:id/join-request → CoR resolver
-                          ├── /org/:id/resources (CRUD + RBAC Strategy middleware)
-                          ├── /resources/:id/bookings (State machine + unique index)
-                          ├── /resources/:id/waitlist (Observer-driven)
-                          └── /cron/expire-holds (token-protected, external trigger)
+                          ├── /auth (JWT - Access Token Only)
+                          ├── /superadmin/orgs  (Org approval, factory → rank-0 RoleLevel)
+                          ├── /roles (CRUD, OrgAdmin-only)
+                          ├── /join-requests → CoR resolver
+                          ├── /resources (CRUD + RBAC Strategy middleware)
+                          └── /bookings (State machine + unique index)
                        ↓
                   [MongoDB Atlas]
                   unique compound index: {resourceId, slotStart}
-                       ↑
-              [cron-job.org] hits /cron/expire-holds every N min
 ```
 
 ---
 
-## 2. Core Abstraction & Entity Relationships
+## 2. Core Entities
 
 The platform organizes access control and booking logic via a clean hierarchical chain and resource gating:
 
-```
-SuperAdmin (singleton, seeded)
-   │ approves
-   ▼
-Org (status: pending|approved|rejected)
-   │ owns
-   ▼
-RoleLevel (orgId, rank, name, parentRoleLevelId?)  ← chain, rank 0 = OrgAdmin
-   │ binds
-   ▼
-User (orgId, roleLevelId)
-   │ creates (if rank allows)
-   ▼
-Resource (orgId, allowedRoleLevelIds[] | minRank, slotConfig)
-   │ generates
-   ▼
-Slot (resourceId, slotStart, slotEnd) — virtual or pre-materialized
-   │ booked into
-   ▼
-Booking (resourceId, slotStart, userId, status: open|held|confirmed|expired|cancelled)
-   │ on cancel/expire
-   ▼
-Waitlist (resourceId, slotStart, userId, position) — Observer reacts to booking-cancelled
-```
-
-### Key Rules
-- **Org Isolation**: All entities (Users, RoleLevels, Resources, Bookings) are isolated at the `Org` level.
-- **OrgAdmin Independence**: Nothing above `OrgAdmin` is hardcoded per-org.
-- **SuperAdmin Role**: The SuperAdmin is a global singleton whose primary job is gating/approving the existence of organizations.
+- **SuperAdmin**: Platform administrators, stored in a dedicated `SuperAdmin` collection. Responsible for gating/approving organizations.
+- **Org**: Isolated tenant organizations (`pending`, `active`, `rejected`).
+- **RoleLevel**: Dynamic, hierarchy pointers defining ranks (`rank 0` is highest, e.g., `OrgAdmin`).
+- **User**: User accounts bound to an `Org` and a `RoleLevel`.
+- **Resource**: Gatekeepers containing authority ceilings (`maxAllowedRank`), operating hours, and booking slot duration settings.
+- **Booking**: Bookings mapped to slots, running through a status state machine (`held`, `confirmed`, `expired`, `cancelled`).
+- **Waitlist**: Slot waitlist queue positions for users waiting for resource slot promotion.
 
 ---
 
-## 3. Design Patterns & Architectural Decisions
+## 3. Implemented Design Patterns & Architecture
 
-To keep the codebase maintainable, extensible, and clean, four primary design patterns are utilized:
-
-### A. Chain of Responsibility (CoR) for Role Resolution
-- **Why**: When a new user submits a join request, they request a desired `RoleLevel`. However, they may not qualify immediately (due to vacancy limits, specific onboarding policies, or approvals needing routing up the chain).
-- **Mechanism**: The resolver engine walks up the hierarchy (`rank - 1`) checking handlers until a `RoleLevel` accepts. This chain terminates at `rank 0` (`OrgAdmin`), which acts as the root handler and always accepts.
-- **Isolation**: Built during Day 1 in isolation with comprehensive unit tests against synthetic role chains, ensuring the core hierarchy logic works flawlessly without any HTTP or database layer complexities.
+### A. Chain of Responsibility (CoR) Resolver
+- **Pattern**: A request to join an organization specifies a desired `RoleLevel`. If the immediate parent level has no active users to authorize the request, the resolver walks up the role hierarchy (`parentRoleLevelId` DAG chain) until it finds a level with active users to resolve the request. The chain halts at `rank 0` (OrgAdmin) as the fallback resolver.
+- **Implementation**: Fully implemented in `src/utils/resolver.js` and wired up to the `GET /api/join-requests/pending` and `POST /api/join-requests/:requestId/resolve` endpoints.
 
 ### B. Strategy Pattern for RBAC Middleware
-- **Why**: The logic for checking if a user has access to a resource (e.g., `rank <= minRank`, `roleLevelId ∈ allowedRoleLevelIds`, or potentially `rank between X and Y` in the future) should be modular and easy to swap.
-- **Mechanism**: Rather than hardcoding authorization conditions directly in the Express route handlers or middleware, we define comparison strategies. The correct strategy is injected into the RBAC middleware at **route-registration time**.
+- **Pattern**: Dynamic resource access checks compare the requester's numeric rank against the resource's `maxAllowedRank`. By default, it uses `(userRank, requiredRank) => userRank <= requiredRank`. To support modular and customizable access rules, the middleware accepts an injected comparator strategy.
+- **Implementation**: Fully implemented in `src/middleware/auth.js` (`checkResourceAccess`) and unit tested in `tests/rbacStrategy.test.js`.
 
 ### C. State Machine for Bookings
-- **Why**: Managing booking lifecycle transitions can quickly turn into error-prone `if/else` checks on string status values.
-- **Mechanism**: Booking status transitions are managed as a strict lookup table representing valid state transitions:
-  - `open` → `held` → `confirmed`
-  - `held` → `expired`
-  - `confirmed` → `cancelled`
-- **Benefit**: This makes cron-based hold-expiry jobs and MongoDB duplicate-key race-condition handling safe to reason about.
+- **Pattern**: Valid status transitions are explicitly checked against a transition table to prevent invalid workflow states.
+  - `held` → `confirm` → `confirmed`
+  - `held` → `cancel` → `cancelled`
+  - `held` → `expire` → `expired`
+  - `confirmed` → `cancel` → `cancelled`
+- **Implementation**: Enforced in `src/controllers/bookingController.js`. Stale holds (older than 5 minutes) are expired lazily on booking attempts and slot checks.
 
-### D. Observer Pattern for Waitlist Promotion
-- **Why**: Decouples the action of cancelling or expiring a booking from the logic that decides who next gets promoted from the waitlist.
-- **Mechanism**: The Booking module emits a `booking:cancelled` event. The Waitlist module subscribes to this event, pops the next user in line (`position` order), and automatically promotes them.
-- **Benefit**: Ensures high cohesion and low coupling; Day 4 (Waitlist) and Day 5 (Advanced Scheduling) can be developed and unit-tested independently.
+### D. Concurrency & Duplicate Gating (E11000 → 409)
+- Enforces timeslot exclusivity at the database layer with a compound unique index on `{ resourceId, slotStart }` for active bookings.
+- Under high concurrency, when two booking requests attempt to write to the database at the exact same time, MongoDB rejects the second transaction with an `E11000 duplicate key error`.
+- The Express controller intercepts the `E11000` error and translates it to a clean `409 Conflict` HTTP response: `{"error": "This slot is already booked or held"}`.
 
 ---
 
-## 4. Concurrency & Race-Condition Handling
+## 4. Setup & Running
 
-### The Scenario
-Two users try to create a hold on the exact same resource slot (`{resourceId, slotStart}`) at the exact same moment.
+### Requirements
+- Node.js (>= 18.0.0)
+- npm
 
-### The Solution (Our Headline Concurrency Story)
-1. We rely on a database-level safety net: a **unique compound index** on `{resourceId, slotStart}` within MongoDB.
-2. When the parallel `held` requests hit the database, MongoDB enforces the index. One write will succeed, and the loser will immediately fail with a `MongoServerError: E11000 duplicate key error`.
-3. The Express controller catches the `E11000` error and converts it to a clean `409 Conflict` HTTP response (instead of a generic `500 Internal Server Error`).
-4. **Verification**: A concurrency proof script fires two parallel `axios.post` requests using `Promise.allSettled` and asserts that exactly one request succeeds (`201` or `200`) while the other fails with a `409 Conflict`.
+### Installation
+1. Navigate to the backend directory:
+   ```bash
+   cd backend
+   ```
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+### Running Seeding Script
+To seed the initial global `SuperAdmin` into the database:
+```bash
+npm run seed:superadmin
+```
+
+### Running the Test Suite
+Tests are implemented using Jest and run against an in-memory replica set (`MongoMemoryReplSet` for transaction/concurrency support):
+```bash
+npm test
+```
+The test suite validates:
+1. `rbacStrategy.test.js` - Isolated RBAC injected strategy unit tests.
+2. `concurrency.test.js` - Automated race-condition tests asserting `201 Created` vs `409 Conflict`.
+3. `integration.test.js` - Full end-to-end organization approval, role creation, and CoR join requests.
+4. `resolver.test.js` - Chain of Responsibility resolver checks on 2-level and 4-level synthetic hierarchies.
+5. `rbac.test.js` - Rank authority validation checks.
+
+### Running the Concurrency Race Test Script
+The race test script runs a self-contained test server, triggers two concurrent Axios POST requests to hold the same slot, checks the database state, and writes the output log:
+```bash
+npm run race-test
+```
+The execution logs are saved to:
+- `docs/race_log.txt`
+- `backend/docs/race_log.txt`
