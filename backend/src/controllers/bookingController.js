@@ -1,5 +1,6 @@
 const Booking = require('../models/Booking');
 const Resource = require('../models/Resource');
+const appEvents = require('../utils/events');
 
 // Booking state transition table
 const BOOKING_TRANSITION_TABLE = {
@@ -39,6 +40,11 @@ const cleanupExpiredBookings = async () => {
     try {
       booking.status = 'expired';
       await booking.save();
+      // Emit booking:cancelled event to notify waitlist observer
+      appEvents.emit('booking:cancelled', {
+        resourceId: booking.resourceId,
+        slotStart: booking.slotStart
+      });
     } catch (err) {
       console.error(`Failed to expire booking ${booking._id}:`, err.message);
     }
@@ -169,6 +175,13 @@ const cancelBooking = async (req, res) => {
       const nextStatus = getNextStatus(booking.status, 'cancel');
       booking.status = nextStatus;
       await booking.save();
+
+      // Emit booking:cancelled event to notify waitlist observer
+      appEvents.emit('booking:cancelled', {
+        resourceId: booking.resourceId,
+        slotStart: booking.slotStart
+      });
+
       res.json(booking);
     } catch (transErr) {
       return res.status(400).json({ error: transErr.message });

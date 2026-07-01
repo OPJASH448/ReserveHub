@@ -7,6 +7,11 @@ const roleRoutes = require('./routes/roles');
 const joinRequestRoutes = require('./routes/joinRequests');
 const resourceRoutes = require('./routes/resources');
 const bookingRoutes = require('./routes/bookings');
+const waitlistRoutes = require('./routes/waitlists');
+const cronRoutes = require('./routes/cron');
+
+// Load observers so event listeners are registered
+require('./observers/waitlistObserver');
 
 const app = express();
 
@@ -21,6 +26,8 @@ app.use('/api/roles', roleRoutes);
 app.use('/api/join-requests', joinRequestRoutes);
 app.use('/api/resources', resourceRoutes);
 app.use('/api/bookings', bookingRoutes);
+app.use('/api/waitlists', waitlistRoutes);
+app.use('/api/cron', cronRoutes);
 
 // Root path response
 app.get('/', (req, res) => {
