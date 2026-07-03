@@ -2,21 +2,11 @@ const Booking = require('../models/Booking');
 const Resource = require('../models/Resource');
 const appEvents = require('../utils/events');
 
-// Booking state transition table
 const BOOKING_TRANSITION_TABLE = {
-  'held': {
-    'confirm': 'confirmed',
-    'cancel': 'cancelled',
-    'expire': 'expired'
-  },
-  'confirmed': {
-    'cancel': 'cancelled'
-  }
+  'held': { 'confirm': 'confirmed', 'cancel': 'cancelled', 'expire': 'expired' },
+  'confirmed': { 'cancel': 'cancelled' }
 };
 
-/**
- * Executes a status transition on a booking based on the transition table.
- */
 function getNextStatus(currentStatus, action) {
   const transitions = BOOKING_TRANSITION_TABLE[currentStatus];
   if (!transitions || !transitions[action]) {
@@ -25,29 +15,26 @@ function getNextStatus(currentStatus, action) {
   return transitions[action];
 }
 
-/**
- * Stale holds (older than 5 minutes) are expired.
- * We run this lazily before checking slot availability or creating holds.
- */
 const cleanupExpiredBookings = async () => {
-  const fiveMinsAgo = new Date(Date.now() - 5 * 60 * 1000);
-  const expiredHolds = await Booking.find({
-    status: 'held',
-    createdAt: { $lt: fiveMinsAgo }
-  });
-
+  const threeMinsAgo = new Date(Date.now() - 3 * 60 * 1000);
+  const expiredHolds = await Booking.find({ status: 'held', createdAt: { $lt: threeMinsAgo } });
   for (const booking of expiredHolds) {
     try {
       booking.status = 'expired';
       await booking.save();
-      // Emit booking:cancelled event to notify waitlist observer
-      appEvents.emit('booking:cancelled', {
-        resourceId: booking.resourceId,
-        slotStart: booking.slotStart
-      });
-    } catch (err) {
-      console.error(`Failed to expire booking ${booking._id}:`, err.message);
-    }
+      appEvents.emit('booking:cancelled', { resourceId: booking.resourceId, slotStart: booking.slotStart });
+    } catch (err) { console.error(`Failed to expire booking ${booking._id}:`, err.message); }
+  }
+};
+
+const getMyBookings = async (req, res) => {
+  try {
+    const bookings = await Booking.find({ userId: req.user.userId })
+      .populate({ path: 'resourceId', select: 'name orgId' })
+      .sort({ slotStart: -1 });
+    res.json(bookings);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch bookings' });
   }
 };
 
@@ -195,5 +182,6 @@ module.exports = {
   holdSlot,
   confirmBooking,
   cancelBooking,
-  cleanupExpiredBookings
+  cleanupExpiredBookings,
+  getMyBookings
 };

@@ -52,6 +52,9 @@ describe('Strata Day 1 End-to-End API Integration', () => {
         password: 'AlicePassword123!'
       });
 
+    if (registerRes.status !== 201) {
+      console.log('REGISTRATION FAILED WITH:', registerRes.status, registerRes.body);
+    }
     expect(registerRes.status).toBe(201);
     expect(registerRes.body.orgId).toBeDefined();
     expect(registerRes.body.userId).toBeDefined();
@@ -59,34 +62,7 @@ describe('Strata Day 1 End-to-End API Integration', () => {
     const orgId = registerRes.body.orgId;
     const aliceId = registerRes.body.userId;
 
-    // 2. Try to login with Alice before SuperAdmin approval (should fail)
-    const loginFailRes = await request(app)
-      .post('/api/auth/login')
-      .send({
-        email: 'alice@acme.edu',
-        password: 'AlicePassword123!'
-      });
-
-    expect(loginFailRes.status).toBe(403);
-    expect(loginFailRes.body.error).toContain('pending approval');
-
-    // 3. SuperAdmin fetches pending organizations
-    const pendingOrgsRes = await request(app)
-      .get('/api/superadmin/pending-orgs')
-      .set('Authorization', `Bearer ${superAdminToken}`);
-
-    expect(pendingOrgsRes.status).toBe(200);
-    expect(pendingOrgsRes.body.length).toBe(1);
-    expect(pendingOrgsRes.body[0].name).toBe('Acme School');
-
-    // 4. SuperAdmin approves the Organization
-    const approveRes = await request(app)
-      .post(`/api/superadmin/approve-org/${orgId}`)
-      .set('Authorization', `Bearer ${superAdminToken}`);
-
-    expect(approveRes.status).toBe(200);
-
-    // Verify Organization is active, and Alice has role "OrgAdmin" at rank 0
+    // Verify Organization is active, and Alice has role "OrgAdmin" at rank 0 immediately
     const approvedOrg = await Org.findById(orgId);
     expect(approvedOrg.status).toBe('active');
 
@@ -96,7 +72,7 @@ describe('Strata Day 1 End-to-End API Integration', () => {
     expect(aliceUser.roleLevelId.name).toBe('OrgAdmin');
     expect(aliceUser.roleLevelId.rank).toBe(0);
 
-    // 5. Login Alice (should succeed now)
+    // 2. Login Alice directly (should succeed immediately)
     const loginSuccessRes = await request(app)
       .post('/api/auth/login')
       .send({

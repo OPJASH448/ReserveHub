@@ -12,6 +12,17 @@ const getPendingOrgs = async (req, res) => {
   }
 };
 
+const getAllOrgs = async (req, res) => {
+  try {
+    const { status } = req.query;
+    const filter = status && status !== 'all' ? { status } : {};
+    const orgs = await Org.find(filter).populate('createdBy', 'name email').sort({ createdAt: -1 });
+    res.json(orgs);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch organizations' });
+  }
+};
+
 const approveOrg = async (req, res) => {
   const { orgId } = req.params;
 
@@ -83,6 +94,7 @@ const rejectOrg = async (req, res) => {
 
 module.exports = {
   getPendingOrgs,
+  getAllOrgs,
   approveOrg,
   rejectOrg
 };

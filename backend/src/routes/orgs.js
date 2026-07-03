@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const { getPendingOrgs, approveOrg, rejectOrg } = require('../controllers/orgController');
+const { getPendingOrgs, getAllOrgs, approveOrg, rejectOrg } = require('../controllers/orgController');
 const { authenticateToken, requireSuperAdmin } = require('../middleware/auth');
 
 router.use(authenticateToken);
 router.use(requireSuperAdmin);
 
 router.get('/pending-orgs', getPendingOrgs);
+router.get('/all-orgs', getAllOrgs);
 router.post('/approve-org/:orgId', approveOrg);
 router.post('/reject-org/:orgId', rejectOrg);
 

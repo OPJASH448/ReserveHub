@@ -145,8 +145,65 @@ const resolveJoinRequest = async (req, res) => {
   }
 };
 
+const submitJoinRequestForUser = async (req, res) => {
+  const { orgId, requestedRoleLevelId } = req.body;
+  const { userId } = req.user;
+
+  if (!orgId || !requestedRoleLevelId) {
+    return res.status(400).json({ error: 'Organization and Desired Role are required' });
+  }
+
+  try {
+    const org = await Org.findById(orgId);
+    if (!org || org.status !== 'active') {
+      return res.status(400).json({ error: 'Organization is not active or does not exist' });
+    }
+
+    const requestedRole = await RoleLevel.findOne({ _id: requestedRoleLevelId, orgId });
+    if (!requestedRole) {
+      return res.status(400).json({ error: 'Requested RoleLevel does not exist in this organization' });
+    }
+
+    if (requestedRole.rank === 0) {
+      return res.status(400).json({ error: 'Cannot request to join at rank 0 (OrgAdmin)' });
+    }
+
+    // Create the Join Request
+    const joinRequest = new JoinRequest({
+      userId: userId,
+      orgId,
+      requestedRoleLevelId,
+      status: 'pending'
+    });
+    await joinRequest.save();
+
+    // Link user to org but keep status active so they can remain logged in and see requests
+    await User.findByIdAndUpdate(userId, { orgId });
+
+    res.status(201).json({
+      message: 'Join request submitted successfully! Your account remains active so you can track approval progress below.',
+      requestId: joinRequest._id
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Failed to submit join request' });
+  }
+};
+
+const getMyJoinRequests = async (req, res) => {
+  try {
+    const requests = await JoinRequest.find({ userId: req.user.userId })
+      .populate('orgId', 'name type')
+      .populate('requestedRoleLevelId', 'name rank');
+    res.json(requests);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch your join requests' });
+  }
+};
+
 module.exports = {
   createJoinRequest,
   getPendingRequestsForResolver,
-  resolveJoinRequest
+  resolveJoinRequest,
+  submitJoinRequestForUser,
+  getMyJoinRequests
 };
