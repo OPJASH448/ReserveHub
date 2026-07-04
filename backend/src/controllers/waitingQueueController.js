@@ -64,7 +64,7 @@ const joinWaitingQueue = async (req, res) => {
       queueId: queueEntry._id
     });
   } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to join waiting queue' });
+    res.status(500).json({ error: 'Failed to join waiting queue' });
   }
 };
 
@@ -158,7 +158,7 @@ const resolveQueueRequest = async (req, res) => {
       });
     }
   } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to resolve queue request' });
+    res.status(500).json({ error: 'Failed to resolve queue request' });
   }
 };
 

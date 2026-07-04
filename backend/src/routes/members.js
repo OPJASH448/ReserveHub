@@ -8,8 +8,8 @@ router.get('/', authenticateToken, async (req, res) => {
   const { q } = req.query;
   try {
     const filter = { orgId: req.user.orgId };
-    if (q && q.trim()) {
-      const prefix = q.trim();
+    if (typeof q === 'string' && q.trim()) {
+      const prefix = q.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       filter.$or = [
         { name: { $regex: `^${prefix}`, $options: 'i' } },
         { email: { $regex: `^${prefix}`, $options: 'i' } }

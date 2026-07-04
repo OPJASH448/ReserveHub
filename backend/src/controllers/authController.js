@@ -111,7 +111,7 @@ const registerOrg = async (req, res) => {
       userId: user._id
     });
   } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to register organization' });
+    res.status(500).json({ error: 'Failed to register organization' });
   }
 };
 
@@ -256,7 +256,7 @@ const createOrgForUser = async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to create organization' });
+    res.status(500).json({ error: 'Failed to create organization' });
   }
 };
 
@@ -298,7 +298,7 @@ const switchOrg = async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to switch organization' });
+    res.status(500).json({ error: 'Failed to switch organization' });
   }
 };
 

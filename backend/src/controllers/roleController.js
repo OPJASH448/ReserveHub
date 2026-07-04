@@ -34,7 +34,7 @@ const createRole = async (req, res) => {
     await newRole.save();
     res.status(201).json(newRole);
   } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to create role level' });
+    res.status(500).json({ error: 'Failed to create role level' });
   }
 };
 

@@ -13,7 +13,7 @@ BookingSchema.index(
   { resourceId: 1, slotStart: 1 },
   { 
     unique: true, 
-    partialFilterExpression: { status: { $in: ['open', 'held', 'confirmed'] } } 
+    partialFilterExpression: { status: { $in: ['held', 'confirmed'] } } 
   }
 );
 

@@ -3,7 +3,7 @@ const mongoose = require('mongoose');
 const OrgSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true, trim: true },
   type: { type: String, required: true, trim: true }, // Free-text type (e.g., "school", "hospital", "coworking")
-  status: { type: String, enum: ['active', 'inactive'], default: 'active' },
+  status: { type: String, enum: ['active', 'inactive', 'pending', 'rejected'], default: 'pending' },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true }
 }, { timestamps: true });
 

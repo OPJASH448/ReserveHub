@@ -7,8 +7,12 @@ const createResource = async (req, res) => {
   const { name, description, image, quantity, maxAllowedRank, slotDurationMinutes, operatingHours } = req.body;
   const { orgId, userId } = req.user;
 
+  const qty = Number(quantity);
   if (!name || maxAllowedRank === undefined || !slotDurationMinutes || !operatingHours || !operatingHours.start || !operatingHours.end || quantity === undefined) {
     return res.status(400).json({ error: 'Missing required fields: name, quantity, maxAllowedRank, slotDurationMinutes, operatingHours' });
+  }
+  if (!Number.isInteger(qty) || qty < 1) {
+    return res.status(400).json({ error: 'Quantity must be a positive integer' });
   }
 
   try {
@@ -17,7 +21,7 @@ const createResource = async (req, res) => {
       name,
       description: description || '',
       image: image || '',
-      quantity: Number(quantity),
+      quantity: qty,
       maxAllowedRank,
       slotDurationMinutes,
       operatingHours,
@@ -92,7 +96,7 @@ const updateResource = async (req, res) => {
     await resource.save();
     res.json(resource);
   } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to update resource' });
+    res.status(500).json({ error: 'Failed to update resource' });
   }
 };
 
@@ -119,10 +123,13 @@ const deleteResource = async (req, res) => {
       return res.status(403).json({ error: `Access denied: your rank (${rank}) cannot delete a resource with max level ${resource.maxAllowedRank}. Requires rank <= ${Math.floor(resource.maxAllowedRank / 2)}` });
     }
 
-    await Resource.deleteOne({ _id: id, orgId });
+    const result = await Resource.deleteOne({ _id: id, orgId });
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: 'Resource not found or already deleted' });
+    }
     res.json({ message: 'Resource deleted successfully' });
   } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to delete resource' });
+    res.status(500).json({ error: 'Failed to delete resource' });
   }
 };
 

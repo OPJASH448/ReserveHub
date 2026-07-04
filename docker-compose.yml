@@ -1,0 +1,9 @@
+services:
+  app:
+    build: .
+    container_name: reservehub-app
+    ports:
+      - "10000:10000"
+    env_file:
+      - ./backend/.env
+    restart: unless-stopped

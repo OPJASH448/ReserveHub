@@ -48,24 +48,39 @@ const joinWaitlist = async (req, res) => {
       return res.status(400).json({ error: 'You are already on the waitlist for this slot' });
     }
 
-    // Calculate position in the queue
-    const lastEntry = await Waitlist.findOne({
-      resourceId,
-      slotStart: parsedStart
-    }).sort({ position: -1 });
+    // Calculate position in the queue with retry for race conditions
+    let waitlistEntry;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const lastEntry = await Waitlist.findOne({
+        resourceId,
+        slotStart: parsedStart
+      }).sort({ position: -1 });
 
-    const position = lastEntry ? lastEntry.position + 1 : 1;
+      const position = lastEntry ? lastEntry.position + 1 : 1;
 
-    const waitlistEntry = new Waitlist({
-      resourceId,
-      userId,
-      slotStart: parsedStart,
-      position
-    });
+      waitlistEntry = new Waitlist({
+        resourceId,
+        userId,
+        slotStart: parsedStart,
+        position
+      });
 
-    await waitlistEntry.save();
+      try {
+        await waitlistEntry.save();
+        break;
+      } catch (saveErr) {
+        if (saveErr.code === 11000 && attempt < 2) {
+          continue;
+        }
+        throw saveErr;
+      }
+    }
+
     res.status(201).json(waitlistEntry);
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({ error: 'You are already on the waitlist for this slot' });
+    }
     res.status(500).json({ error: 'Failed to join waitlist' });
   }
 };

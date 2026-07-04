@@ -14,8 +14,10 @@ const getPendingOrgs = async (req, res) => {
 
 const getAllOrgs = async (req, res) => {
   try {
-    const { status } = req.query;
-    const filter = status && status !== 'all' ? { status } : {};
+    let status = req.query.status;
+    if (typeof status !== 'string') status = '';
+    const validStatuses = ['active', 'inactive', 'pending', 'rejected'];
+    const filter = status && status !== 'all' && validStatuses.includes(status) ? { status } : {};
     const orgs = await Org.find(filter).populate('createdBy', 'name email').sort({ createdAt: -1 });
     res.json(orgs);
   } catch (error) {
@@ -62,7 +64,7 @@ const approveOrg = async (req, res) => {
 
     res.json({ message: 'Organization approved successfully. Admin role created and creator activated.' });
   } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to approve organization' });
+    res.status(500).json({ error: 'Failed to approve organization' });
   }
 };
 
@@ -88,7 +90,7 @@ const rejectOrg = async (req, res) => {
 
     res.json({ message: 'Organization registration rejected.' });
   } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to reject organization' });
+    res.status(500).json({ error: 'Failed to reject organization' });
   }
 };
 

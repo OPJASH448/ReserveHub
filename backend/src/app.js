@@ -1,4 +1,6 @@
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
 const cookieParser = require('cookie-parser');
 
 const authRoutes = require('./routes/auth');
@@ -41,9 +43,26 @@ app.use('/api/waiting-queue', waitingQueueRoutes);
 app.use('/api/cron', cronRoutes);
 app.use('/api/members', require('./routes/members'));
 
-// Root path response
-app.get('/', (req, res) => {
-  res.json({ message: 'ReserveHub API Engine is running' });
+// Serve built frontend from ./public when present (Docker/production)
+const publicPath = path.join(__dirname, '../public');
+if (fs.existsSync(publicPath)) {
+  app.use(express.static(publicPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) return next();
+    res.sendFile(path.join(publicPath, 'index.html'), (err) => {
+      if (err) next();
+    });
+  });
+} else {
+  // Only during local backend development (no React build)
+  app.get('/', (req, res) => {
+    res.json({ message: 'ReserveHub API Engine is running' });
+  });
+}
+
+// Catch-all for undefined routes under /api
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ error: 'API endpoint not found' });
 });
 
 // Error handling middleware

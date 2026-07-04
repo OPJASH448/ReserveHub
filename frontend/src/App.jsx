@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   LogOut, Users, Layers, Calendar, Building2, Mail, Clock,
-  Upload, ImagePlus, ChevronRight, X, Check, AlertTriangle,
-  Inbox, Search, Shield, Star, Zap, Settings, Loader2,
-  UserCircle, Edit3, Trash2, Filter, ChevronDown, Circle,
-  Bell, Command, ArrowRight, Sparkles, TrendingUp, Activity,
-  Home, Hash, Lock, Eye
+  ImagePlus, ChevronRight, X, Check, AlertTriangle,
+  Inbox, Search, Shield, Star, Zap, Loader2,
+  UserCircle, Edit3, Trash2, Filter, ChevronDown,
+  Bell, ArrowRight, Sparkles, Activity,
+  Home, Lock
 } from 'lucide-react';
 import { uploadResourceImage } from './supabase';
 
@@ -317,8 +317,12 @@ export default function App() {
   const notificationRef = useRef(null);
 
   useEffect(() => {
-    if (user) localStorage.setItem('user', JSON.stringify(user));
-    else localStorage.removeItem('user');
+    if (user) {
+      localStorage.setItem('user', JSON.stringify(user));
+      fetchProfile();
+    } else {
+      localStorage.removeItem('user');
+    }
   }, [user]);
 
   useEffect(() => {
@@ -362,7 +366,13 @@ export default function App() {
   const fetchWithAuth = async (url, options = {}) => {
     const token = user?.accessToken;
     const headers = { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}), ...options.headers };
-    return fetch(url, { ...options, headers });
+    const res = await fetch(url, { ...options, headers });
+    if (res.status === 401 && user) {
+      showToast('Session expired. Please log in again.', 'error');
+      setUser(null);
+      localStorage.removeItem('user');
+    }
+    return res;
   };
 
   const handleLogout = () => { setUser(null); setActiveTab('dashboard'); localStorage.removeItem('user'); };
@@ -588,7 +598,8 @@ export default function App() {
       const res = await fetchWithAuth('/api/members/me');
       const data = await res.json();
       if (res.ok) setProfileData(data);
-    } catch (err) { console.error(err); }
+      else showToast(data.error || 'Failed to load profile', 'error');
+    } catch (err) { showToast('Network error loading profile', 'error'); console.error(err); }
   };
 
   const fetchMembers = async (query = '') => {
@@ -608,28 +619,30 @@ export default function App() {
   };
 
   const exportBookingsCSV = () => {
-    if (myBookings.length === 0) return;
-    const headers = ['Resource', 'Date', 'Start Time', 'End Time', 'Status'];
-    const rows = myBookings.map(b => {
-      const start = new Date(b.slotStart);
-      const end = new Date(b.slotEnd);
-      return [
-        b.resourceId?.name || 'Deleted',
-        start.toLocaleDateString('en-US'),
-        start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
-        end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
-        b.status
-      ];
-    });
-    const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `bookings-${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    showToast('CSV exported!', 'success');
+    try {
+      if (myBookings.length === 0) return;
+      const headers = ['Resource', 'Date', 'Start Time', 'End Time', 'Status'];
+      const rows = myBookings.map(b => {
+        const start = new Date(b.slotStart);
+        const end = new Date(b.slotEnd);
+        return [
+          b.resourceId?.name || 'Deleted',
+          start.toLocaleDateString('en-US'),
+          start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
+          end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }),
+          b.status
+        ];
+      });
+      const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `bookings-${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('CSV exported!', 'success');
+    } catch (err) { showToast('Failed to export CSV', 'error'); }
   };
 
   const openEditResource = (res) => {
@@ -786,7 +799,7 @@ export default function App() {
     );
   }
 
-  const { name } = user.user;
+  const { name = 'User' } = user.user || {};
   const confirmedBookings = myBookings.filter(b => b.status === 'confirmed');
   const heldBookings = myBookings.filter(b => b.status === 'held');
 
@@ -869,7 +882,7 @@ export default function App() {
                 <div className="profile-trigger-avatar">{name?.charAt(0)?.toUpperCase()}</div>
                 <div className="profile-trigger-info">
                   <div className="profile-trigger-name">{name}</div>
-                  <div className="profile-trigger-role">{user.user.rank === null ? 'Pending' : `Level ${user.user.rank}`}</div>
+                  <div className="profile-trigger-role">{user.user.rank === null || user.user.rank === undefined ? 'Pending' : `Level ${user.user.rank}`}</div>
                 </div>
                 <ChevronDown size={14} className="profile-trigger-chevron" />
               </button>
@@ -1257,14 +1270,14 @@ export default function App() {
                 <div>
                   <div className="section-label" style={{ marginBottom: 16 }}>Slots for {slotsData.date}</div>
                   <div className="slots-grid">
-                    {slotsData.slots.map((slot, index) => {
+                    {slotsData.slots.map((slot) => {
                       const timeLabel = new Date(slot.slotStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
                       let slotClass = 'available';
                       if (slot.status === 'confirmed') slotClass = 'confirmed';
                       else if (slot.status === 'held') slotClass = 'held';
                       const isOwner = slot.bookingUserId === user?.user?.id;
                       return (
-                        <div key={index} className={`slot-card ${slotClass}`}>
+                        <div key={slot.slotStart} className={`slot-card ${slotClass}`}>
                           <div className="slot-top">
                             <div className="slot-time">{timeLabel}</div>
                             <div className={`slot-status status-${slotClass}`}>{slot.status}</div>
@@ -1663,8 +1676,8 @@ export default function App() {
                 <div className="modal-empty"><Inbox size={36} strokeWidth={1} /><p>No one is waiting for this slot.</p></div>
               ) : (
                 <div className="modal-list">
-                  {waitlistModal.users.map((w, i) => (
-                    <div key={i} className="modal-user-row">
+                  {waitlistModal.users.map((w) => (
+                    <div key={w.email || w.position} className="modal-user-row">
                       <div className="modal-user-rank">#{w.position}</div>
                       <div className="modal-user-avatar">{w.name?.charAt(0)}</div>
                       <div className="modal-user-info">
@@ -1689,54 +1702,54 @@ export default function App() {
               <button className="modal-close" onClick={() => setProfileModal(false)}><X size={18} /></button>
             </div>
             <div className="modal-body">
-              {profileData ? (
-                <div className="profile-content">
-                  <div className="profile-avatar-large">
-                    {profileData.name?.charAt(0)?.toUpperCase()}
-                  </div>
-                  <h2 className="profile-name">{profileData.name}</h2>
-                  <p className="profile-email">{profileData.email}</p>
+              <div className="profile-content">
+                <div className="profile-avatar-large">
+                  {user?.user?.name?.charAt(0)?.toUpperCase()}
+                </div>
+                <h2 className="profile-name">{user?.user?.name}</h2>
+                <p className="profile-email">{user?.user?.email}</p>
 
-                  <div className="profile-details">
-                    <div className="profile-detail-row">
-                      <span className="profile-detail-label">Role</span>
-                      <span className={`badge ${getRankBadgeClass(profileData.roleLevelId?.rank)}`}>
-                        {profileData.roleLevelId?.name || 'Unassigned'}
-                      </span>
-                    </div>
-                    <div className="profile-detail-row">
-                      <span className="profile-detail-label">Access Level</span>
-                      <span className={`badge ${getRankBadgeClass(profileData.roleLevelId?.rank)}`}>
-                        {profileData.roleLevelId?.rank !== null && profileData.roleLevelId?.rank !== undefined ? `Level ${profileData.roleLevelId.rank}` : 'Pending'}
-                      </span>
-                    </div>
-                    <div className="profile-detail-row">
-                      <span className="profile-detail-label">Status</span>
-                      <span className={`badge ${profileData.status === 'active' ? 'badge-emerald' : 'badge-gold'}`}>
-                        {profileData.status}
-                      </span>
-                    </div>
-                    <div className="profile-detail-row">
-                      <span className="profile-detail-label">Member Since</span>
-                      <span className="profile-detail-value">
-                        {new Date(profileData.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                      </span>
-                    </div>
-                    <div className="profile-detail-row">
-                      <span className="profile-detail-label">Last Updated</span>
-                      <span className="profile-detail-value">
-                        {new Date(profileData.updatedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-                      </span>
-                    </div>
-                    <div className="profile-detail-row">
-                      <span className="profile-detail-label">User ID</span>
-                      <span className="profile-detail-value profile-id">{profileData._id}</span>
-                    </div>
+                <div className="profile-details">
+                  <div className="profile-detail-row">
+                    <span className="profile-detail-label">Role</span>
+                    <span className={`badge ${getRankBadgeClass(user?.user?.rank)}`}>
+                      {user?.user?.roleName || 'Unassigned'}
+                    </span>
+                  </div>
+                  <div className="profile-detail-row">
+                    <span className="profile-detail-label">Access Level</span>
+                    <span className={`badge ${getRankBadgeClass(user?.user?.rank)}`}>
+                      {user?.user?.rank !== null && user?.user?.rank !== undefined ? `Level ${user.user.rank}` : 'Pending'}
+                    </span>
+                  </div>
+                  <div className="profile-detail-row">
+                    <span className="profile-detail-label">Status</span>
+                    <span className={`badge ${profileData?.status === 'active' ? 'badge-emerald' : 'badge-gold'}`}>
+                      {profileData?.status || 'Active'}
+                    </span>
+                  </div>
+                  <div className="profile-detail-row">
+                    <span className="profile-detail-label">Member Since</span>
+                    <span className="profile-detail-value">
+                      {profileData?.createdAt
+                        ? new Date(profileData.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                        : '—'}
+                    </span>
+                  </div>
+                  <div className="profile-detail-row">
+                    <span className="profile-detail-label">Last Updated</span>
+                    <span className="profile-detail-value">
+                      {profileData?.updatedAt
+                        ? new Date(profileData.updatedAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                        : '—'}
+                    </span>
+                  </div>
+                  <div className="profile-detail-row">
+                    <span className="profile-detail-label">User ID</span>
+                    <span className="profile-detail-value profile-id">{profileData?._id || user?.user?.id || '—'}</span>
                   </div>
                 </div>
-              ) : (
-                <div style={{ textAlign: 'center', padding: 40 }}><Loader2 size={24} className="spin" style={{ color: 'var(--text-muted)' }} /></div>
-              )}
+              </div>
             </div>
           </div>
         </div>

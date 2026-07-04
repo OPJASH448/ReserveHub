@@ -65,7 +65,7 @@ const createJoinRequest = async (req, res) => {
       requestId: result._id
     });
   } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to submit join request' });
+    res.status(500).json({ error: 'Failed to submit join request' });
   }
 };
 
@@ -141,7 +141,7 @@ const resolveJoinRequest = async (req, res) => {
 
     res.json({ message: `Join request successfully ${action}d.` });
   } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to resolve join request' });
+    res.status(500).json({ error: 'Failed to resolve join request' });
   }
 };
 
@@ -185,7 +185,7 @@ const submitJoinRequestForUser = async (req, res) => {
       requestId: joinRequest._id
     });
   } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to submit join request' });
+    res.status(500).json({ error: 'Failed to submit join request' });
   }
 };
 

@@ -83,3 +83,157 @@ Run the tests inside the `backend/` folder:
 ```bash
 npm test
 ```
+
+---
+
+## Docker (Single Image — Express Serves Built React)
+
+A single `Dockerfile` at the project root builds the React frontend in Stage 1 and bundles it into the Express backend image under `./public`. Express serves the SPA as static files.
+
+### Build & Run Locally
+
+```bash
+# Build the image
+docker build -t reservehub .
+
+# Run with .env pointing to your MongoDB (Atlas or local)
+docker run -d -p 5000:5000 --env-file .env --name reservehub reservehub
+```
+
+Open `http://localhost:5000` — the same port serves both the API and the frontend.
+
+### Local Dev with Docker Compose (MongoDB included)
+
+```bash
+# 1. Create .env (or copy from .env.example)
+cp .env.example .env
+
+# 2. Start app + mongo:6
+docker compose up -d
+
+# 3. Open http://localhost:5000
+```
+
+The `docker-compose.yml` starts a local MongoDB 6 container with a persistent volume and connects the app service to it. For MongoDB Atlas, update `MONGODB_URI` in `.env` and remove the `mongo` service from the compose file.
+
+---
+
+## CI/CD Pipeline (GitHub Actions + ECR)
+
+### Workflow: `.github/workflows/ci.yml`
+
+| Job | Triggers | Description |
+|-----|----------|-------------|
+| `test` | push/PR to `main` | Runs Jest test suite inside `backend/` |
+| `docker-build-push` | push to `main` (only after `test` passes) | Builds Docker image, tags it, pushes to Amazon ECR |
+
+### Setup Required
+
+1. **Create ECR repository** named `strata` in `ap-south-1`:
+   ```bash
+   aws ecr create-repository --repository-name strata --region ap-south-1
+   ```
+
+2. **Add GitHub Secrets**:
+   | Secret | Value |
+   |--------|-------|
+   | `AWS_ACCESS_KEY_ID` | IAM user access key with `AmazonEC2ContainerRegistryFullAccess` |
+   | `AWS_SECRET_ACCESS_KEY` | Corresponding secret key |
+
+3. Push to `main` — tests run first; if they pass, the image is built and pushed to ECR automatically.
+
+---
+
+## AWS EC2 Deployment (t3.micro)
+
+### Launch Instance
+
+1. Open EC2 Console → Launch Instance
+2. Name: `reservehub-prod`
+3. AMI: **Amazon Linux 2023** (Free Tier eligible)
+4. Instance type: **t3.micro**
+5. Key pair: Create or select existing
+6. Security group rules:
+   - **HTTP** (80) — `0.0.0.0/0`
+   - **HTTPS** (443) — `0.0.0.0/0` (if using TLS)
+   - **SSH** (22) — your IP only
+7. **Advanced → User data**: paste the script from `scripts/ec2-user-data.sh` (replace `<ACCOUNT_ID>` with your AWS account ID and fill in secrets)
+8. Launch
+
+### Manual Deploy (if not using user-data)
+
+```bash
+# SSH into the instance
+ssh -i your-key.pem ec2-user@<PUBLIC_IP>
+
+# Install Docker
+sudo dnf install -y docker
+sudo systemctl enable docker; sudo systemctl start docker
+
+# Login to ECR
+aws ecr get-login-password --region ap-south-1 | sudo docker login --username AWS --password-stdin <ACCOUNT_ID>.dkr.ecr.ap-south-1.amazonaws.com
+
+# Pull and run
+sudo docker pull <ACCOUNT_ID>.dkr.ecr.ap-south-1.amazonaws.com/strata:latest
+sudo docker run -d -p 80:5000 --env-file .env --name reservehub <ACCOUNT_ID>.dkr.ecr.ap-south-1.amazonaws.com/strata:latest
+```
+
+### Verification
+
+```bash
+curl http://<PUBLIC_IP>/api/
+# → {"message":"ReserveHub API Engine is running"}
+
+curl http://<PUBLIC_IP>/
+# → HTML of the React SPA
+```
+
+### Clean Up
+
+```bash
+# Stop and remove the container
+sudo docker stop reservehub && sudo docker rm reservehub
+
+# Terminate the instance (EC2 Console → Instance State → Terminate)
+```
+
+> Always terminate the EC2 instance when done to avoid unexpected charges. The Free Tier covers 750 hours/month of t3.micro.
+
+---
+
+## Project Structure
+
+```
+ReserveHub/
+├── .dockerignore
+├── .env.example
+├── .github/workflows/ci.yml
+├── docker-compose.yml
+├── Dockerfile
+├── README.md
+├── backend/
+│   ├── package.json
+│   ├── Dockerfile           # Standalone backend image (not used in single-image setup)
+│   └── src/
+│       ├── app.js
+│       ├── server.js
+│       ├── controllers/
+│       ├── middleware/
+│       ├── models/
+│       ├── observers/
+│       ├── routes/
+│       ├── utils/
+│       └── tests/
+├── frontend/
+│   ├── package.json
+│   ├── vite.config.js
+│   ├── nginx.conf           # Only used in the legacy 2-container setup
+│   └── src/
+│       ├── App.jsx
+│       ├── App.css
+│       ├── index.css
+│       ├── main.jsx
+│       └── supabase.js
+└── scripts/
+    └── ec2-user-data.sh
+```

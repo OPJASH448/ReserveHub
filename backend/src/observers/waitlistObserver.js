@@ -5,8 +5,8 @@ const Resource = require('../models/Resource');
 const { runWithTransaction } = require('../utils/transaction');
 
 // Listen for booking cancellations/expirations to promote waitlisted users
-appEvents.on('booking:cancelled', async ({ resourceId, slotStart }) => {
-  console.log(`Event 'booking:cancelled' received for resource: ${resourceId}, slotStart: ${slotStart}`);
+const handleSlotReleased = async ({ resourceId, slotStart }, eventName) => {
+  console.log(`Event '${eventName}' received for resource: ${resourceId}, slotStart: ${slotStart}`);
 
   try {
     const parsedStart = new Date(slotStart);
@@ -20,22 +20,30 @@ appEvents.on('booking:cancelled', async ({ resourceId, slotStart }) => {
     const nextInLine = await Waitlist.findOne({
       resourceId,
       slotStart: parsedStart
-    }).sort({ position: 1 });
+    }).populate('userId', 'rank').sort({ position: 1 });
 
     if (!nextInLine) {
       console.log(`Observer: No users on the waitlist for slot ${parsedStart.toISOString()}`);
       return;
     }
 
-    console.log(`Observer: Promoting waitlisted user ${nextInLine.userId} for slot ${parsedStart.toISOString()}`);
+    console.log(`Observer: Promoting waitlisted user ${nextInLine.userId._id} for slot ${parsedStart.toISOString()}`);
 
     // Perform promotion inside a transaction to prevent double bookings
     await runWithTransaction(async (session) => {
       // 1. Re-verify the waitlist entry still exists
-      const freshWaitlist = await Waitlist.findById(nextInLine._id).session(session);
+      const freshWaitlist = await Waitlist.findById(nextInLine._id).populate('userId', 'rank').session(session);
       if (!freshWaitlist) return;
 
-      // 2. Ensure no active bookings were created concurrently
+      // 2. Verify the waitlisted user's rank still qualifies for this resource
+      const userRank = freshWaitlist.userId?.rank;
+      if (userRank !== null && userRank !== undefined && userRank > resource.maxAllowedRank) {
+        console.warn(`Observer: User ${freshWaitlist.userId._id} rank ${userRank} exceeds resource max ${resource.maxAllowedRank}; skipping promotion and removing from waitlist`);
+        await Waitlist.deleteOne({ _id: freshWaitlist._id }).session(session);
+        return;
+      }
+
+      // 3. Ensure no active bookings were created concurrently
       const activeBooking = await Booking.findOne({
         resourceId,
         slotStart: parsedStart,
@@ -47,24 +55,27 @@ appEvents.on('booking:cancelled', async ({ resourceId, slotStart }) => {
         return;
       }
 
-      // 3. Create the new booking (held status)
+      // 4. Create the new booking (held status)
       const slotEnd = new Date(parsedStart.getTime() + resource.slotDurationMinutes * 60 * 1000);
       const newBooking = new Booking({
         resourceId,
-        userId: freshWaitlist.userId,
+        userId: freshWaitlist.userId._id,
         slotStart: parsedStart,
         slotEnd,
         status: 'held'
       });
       await newBooking.save({ session });
 
-      // 4. Delete the promoted waitlist entry
+      // 5. Delete the promoted waitlist entry
       await Waitlist.deleteOne({ _id: freshWaitlist._id }).session(session);
-      console.log(`Observer: Successfully promoted user ${freshWaitlist.userId} to active booking ${newBooking._id}`);
+      console.log(`Observer: Successfully promoted user ${freshWaitlist.userId._id} to active booking ${newBooking._id}`);
     });
   } catch (err) {
     console.error('Observer: Error processing waitlist promotion:', err.message);
   }
-});
+};
+
+appEvents.on('booking:cancelled', (payload) => handleSlotReleased(payload, 'booking:cancelled'));
+appEvents.on('booking:expired', (payload) => handleSlotReleased(payload, 'booking:expired'));
 
 console.log('Waitlist Observer successfully registered.');

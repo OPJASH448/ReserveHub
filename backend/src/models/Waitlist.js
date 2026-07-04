@@ -10,7 +10,7 @@ const WaitlistSchema = new mongoose.Schema({
 // Ensure a user can only be on the waitlist once per slot start
 WaitlistSchema.index({ resourceId: 1, slotStart: 1, userId: 1 }, { unique: true });
 
-// Ensure position is ordered
-WaitlistSchema.index({ resourceId: 1, slotStart: 1, position: 1 });
+// Ensure position is ordered and unique per slot
+WaitlistSchema.index({ resourceId: 1, slotStart: 1, position: 1 }, { unique: true });
 
 module.exports = mongoose.model('Waitlist', WaitlistSchema);

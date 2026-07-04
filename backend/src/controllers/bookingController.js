@@ -22,7 +22,7 @@ const cleanupExpiredBookings = async () => {
     try {
       booking.status = 'expired';
       await booking.save();
-      appEvents.emit('booking:cancelled', { resourceId: booking.resourceId, slotStart: booking.slotStart });
+      appEvents.emit('booking:expired', { resourceId: booking.resourceId, slotStart: booking.slotStart });
     } catch (err) { console.error(`Failed to expire booking ${booking._id}:`, err.message); }
   }
 };
@@ -107,7 +107,7 @@ const holdSlot = async (req, res) => {
       throw dbErr;
     }
   } catch (error) {
-    res.status(500).json({ error: error.message || 'Failed to hold slot' });
+    res.status(500).json({ error: 'Failed to hold slot' });
   }
 };
 
