@@ -51,6 +51,9 @@ jobs:
 
       - name: Build, tag, and push image to ECR
         run: |
-          docker build -t ${{ env.ECR_REPOSITORY }} .
+          docker build \
+            --build-arg VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }} \
+            --build-arg VITE_SUPABASE_KEY=${{ secrets.VITE_SUPABASE_KEY }} \
+            -t ${{ env.ECR_REPOSITORY }} .
           docker tag ${{ env.ECR_REPOSITORY }}:latest ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
           docker push ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest

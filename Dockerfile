@@ -1,5 +1,9 @@
 # Stage 1 — build React frontend
 FROM node:22-alpine AS client-build
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_KEY
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+ENV VITE_SUPABASE_KEY=$VITE_SUPABASE_KEY
 WORKDIR /app/client
 COPY frontend/package*.json ./
 RUN npm install
