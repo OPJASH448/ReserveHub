@@ -1,4 +1,4 @@
-name: CI — Build, Test & Push to ECR
+name: CI/CD — Build, Test, Push & Deploy
 
 on:
   push:
@@ -57,3 +57,26 @@ jobs:
             -t ${{ env.ECR_REPOSITORY }} .
           docker tag ${{ env.ECR_REPOSITORY }}:latest ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
           docker push ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+
+  deploy:
+    needs: push-to-ecr
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: SSH into EC2 and deploy
+        uses: appleboy/ssh-action@v1.2.1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 254053129243.dkr.ecr.ap-south-1.amazonaws.com
+            docker pull 254053129243.dkr.ecr.ap-south-1.amazonaws.com/reservehub:latest
+            docker stop reservehub || true
+            docker rm reservehub || true
+            docker run -d \
+              --name reservehub \
+              --restart unless-stopped \
+              -p 80:10000 \
+              --env-file /home/ec2-user/.env \
+              254053129243.dkr.ecr.ap-south-1.amazonaws.com/reservehub:latest
