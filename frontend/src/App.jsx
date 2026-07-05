@@ -252,6 +252,7 @@ export default function App() {
   const [regUserName, setRegUserName] = useState('');
   const [authMsg, setAuthMsg] = useState('');
   const [authError, setAuthError] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
   const [roles, setRoles] = useState([]);
   const [newRoleName, setNewRoleName] = useState('');
   const [newRoleParentId, setNewRoleParentId] = useState('');
@@ -657,18 +658,18 @@ export default function App() {
   const handleAutoAuth = async (e) => {
     e.preventDefault(); setAuthMsg(''); setAuthError('');
     try {
-      const loginRes = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
-      if (loginRes.ok) { const data = await loginRes.json(); setUser(data); setEmail(''); setPassword(''); setRegUserName(''); setActiveTab('dashboard'); return; }
-      const loginData = await loginRes.json();
-      if (loginRes.status === 401 && loginData.error === 'Email not found') {
-        if (!regUserName.trim()) { setAuthError('Email not found. Enter your name to create an account.'); return; }
+      if (isSignUp) {
+        if (!regUserName.trim()) { setAuthError('Please enter your full name.'); return; }
         const regRes = await fetch('/api/auth/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: regUserName, email, password }) });
         const regData = await regRes.json();
         if (!regRes.ok) { setAuthError(regData.error || 'Registration failed'); return; }
         const autoLogin = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
-        if (autoLogin.ok) { const data = await autoLogin.json(); setUser(data); setEmail(''); setPassword(''); setRegUserName(''); setActiveTab('dashboard'); }
+        if (autoLogin.ok) { const data = await autoLogin.json(); setUser(data); setEmail(''); setPassword(''); setRegUserName(''); setIsSignUp(false); setActiveTab('dashboard'); }
         return;
       }
+      const loginRes = await fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) });
+      if (loginRes.ok) { const data = await loginRes.json(); setUser(data); setEmail(''); setPassword(''); setRegUserName(''); setActiveTab('dashboard'); return; }
+      const loginData = await loginRes.json();
       setAuthError(loginData.error || 'Login failed');
     } catch (err) { setAuthError(err.message); }
   };
@@ -773,11 +774,15 @@ export default function App() {
           </div>
           {authMsg && <div className="alert alert-success">{authMsg}</div>}
           {authError && <div className="alert alert-error">{authError}</div>}
+          <div className="auth-tabs">
+            <button className={`auth-tab ${!isSignUp ? 'active' : ''}`} onClick={() => setIsSignUp(false)}>Sign In</button>
+            <button className={`auth-tab ${isSignUp ? 'active' : ''}`} onClick={() => setIsSignUp(true)}>Sign Up</button>
+          </div>
           <form onSubmit={handleAutoAuth} className="auth-form">
-            <div className="form-group">
+            {isSignUp && <div className="form-group">
               <label className="form-label">Full Name</label>
-              <input type="text" value={regUserName} onChange={(e) => setRegUserName(e.target.value)} placeholder="Alice Smith" />
-            </div>
+              <input type="text" value={regUserName} onChange={(e) => setRegUserName(e.target.value)} placeholder="Alice Smith" required={isSignUp} />
+            </div>}
             <div className="form-group">
               <label className="form-label">Email Address</label>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" required />
@@ -787,7 +792,7 @@ export default function App() {
               <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" required />
             </div>
             <button type="submit" className="btn btn-primary btn-full">
-              <ArrowRight size={16} /> Continue
+              <ArrowRight size={16} /> {isSignUp ? 'Create Account' : 'Sign In'}
             </button>
             <div className="auth-trust">
               <Lock size={12} /> <span>Your data is encrypted and secure</span>

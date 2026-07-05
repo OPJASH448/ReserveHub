@@ -420,6 +420,36 @@ select option { background: #111827; color: var(--text-primary); }
   margin-top: 6px;
 }
 
+.auth-tabs {
+  display: flex;
+  background: rgba(255,255,255,0.04);
+  border-radius: 10px;
+  padding: 3px;
+  margin-bottom: 8px;
+}
+
+.auth-tab {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+
+.auth-tab.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.auth-tab:hover:not(.active) {
+  color: var(--text-primary);
+}
+
 .auth-form {
   display: flex;
   flex-direction: column;
