@@ -93,21 +93,12 @@ const seedData = async () => {
         );
       }
 
-      // Update existing users that are NOT in our seed list: set department based on their role
+      // Update existing users that are NOT in our seed list: set department to empty (visible to all resources)
       const seededEmails = usersData.map(u => u.email);
       const existingUsers = await User.find({ email: { $nin: seededEmails }, $or: [{ department: { $exists: false } }, { department: '' }, { department: null }] });
       for (const user of existingUsers) {
-        const roleLevel = await RoleLevel.findById(user.roleLevelId);
-        if (roleLevel) {
-          if (roleLevel.name === 'OrgAdmin') {
-            user.department = 'Administration';
-          } else if (roleLevel.rank <= 1) {
-            user.department = 'General';
-          } else {
-            user.department = 'General';
-          }
-          await user.save();
-        }
+        user.department = '';
+        await user.save();
       }
 
       // 5. Resources (upsert by orgId + name)
@@ -145,11 +136,11 @@ const seedData = async () => {
         );
       }
 
-      // Update existing resources not in seed list
+      // Update existing resources not in seed list: set department to empty (visible to all)
       const seededResNames = resourcesData.map(r => r.name);
       await Resource.updateMany(
         { orgId: org._id, name: { $nin: seededResNames }, $or: [{ department: { $exists: false } }, { department: '' }, { department: null }] },
-        { department: 'General' }
+        { department: '' }
       );
 
       console.log('Seed: Upsert complete.');
