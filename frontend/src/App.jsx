@@ -268,6 +268,7 @@ export default function App() {
   const [newResImage, setNewResImage] = useState('');
   const [newResQuantity, setNewResQuantity] = useState(1);
   const [newResRank, setNewResRank] = useState(2);
+  const [newResDepartment, setNewResDepartment] = useState('');
   const [newResDuration, setNewResDuration] = useState(60);
   const [resMsg, setResMsg] = useState('');
   const [selectedResId, setSelectedResId] = useState('');
@@ -301,6 +302,7 @@ export default function App() {
   const [editResQuantity, setEditResQuantity] = useState(1);
   const [editResRank, setEditResRank] = useState(2);
   const [editResDuration, setEditResDuration] = useState(60);
+  const [editResDepartment, setEditResDepartment] = useState('');
 
   const [profileModal, setProfileModal] = useState(false);
   const [profileData, setProfileData] = useState(null);
@@ -459,11 +461,11 @@ export default function App() {
   const handleCreateResource = async (e) => {
     e.preventDefault(); setResMsg('');
     try {
-      const res = await fetchWithAuth('/api/resources', { method: 'POST', body: JSON.stringify({ name: newResName, description: newResDesc, image: newResImage, quantity: Number(newResQuantity), maxAllowedRank: Number(newResRank), slotDurationMinutes: Number(newResDuration), operatingHours: { start: '05:00', end: '22:00' } }) });
+      const res = await fetchWithAuth('/api/resources', { method: 'POST', body: JSON.stringify({ name: newResName, description: newResDesc, image: newResImage, quantity: Number(newResQuantity), maxAllowedRank: Number(newResRank), department: newResDepartment, slotDurationMinutes: Number(newResDuration), operatingHours: { start: '05:00', end: '22:00' } }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to create resource');
       showToast('Resource created!', 'success');
-      setNewResName(''); setNewResDesc(''); setNewResImage(''); setNewResQuantity(1);
+      setNewResName(''); setNewResDesc(''); setNewResImage(''); setNewResQuantity(1); setNewResDepartment('');
       fetchResources();
     } catch (err) { showToast(err.message, 'error'); }
   };
@@ -472,7 +474,7 @@ export default function App() {
     e.preventDefault();
     if (!editingResource) return;
     try {
-      const res = await fetchWithAuth(`/api/resources/${editingResource._id}`, { method: 'PUT', body: JSON.stringify({ name: editResName, description: editResDesc, quantity: Number(editResQuantity), maxAllowedRank: Number(editResRank), slotDurationMinutes: Number(editResDuration) }) });
+      const res = await fetchWithAuth(`/api/resources/${editingResource._id}`, { method: 'PUT', body: JSON.stringify({ name: editResName, description: editResDesc, quantity: Number(editResQuantity), maxAllowedRank: Number(editResRank), department: editResDepartment, slotDurationMinutes: Number(editResDuration) }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to update resource');
       showToast('Resource updated!', 'success');
@@ -652,6 +654,7 @@ export default function App() {
     setEditResDesc(res.description || '');
     setEditResQuantity(res.quantity);
     setEditResRank(res.maxAllowedRank);
+    setEditResDepartment(res.department || '');
     setEditResDuration(res.slotDurationMinutes);
   };
 
@@ -885,9 +888,9 @@ export default function App() {
             <div style={{ position: 'relative' }} ref={profileDropdownRef}>
               <button className="profile-trigger" onClick={() => setShowProfileDropdown(!showProfileDropdown)}>
                 <div className="profile-trigger-avatar">{name?.charAt(0)?.toUpperCase()}</div>
-                <div className="profile-trigger-info">
+                  <div className="profile-trigger-info">
                   <div className="profile-trigger-name">{name}</div>
-                  <div className="profile-trigger-role">{user.user.rank === null || user.user.rank === undefined ? 'Pending' : `Level ${user.user.rank}`}</div>
+                  <div className="profile-trigger-role">{user.user.department || ''}{user.user.department ? ' — ' : ''}{user.user.rank === null || user.user.rank === undefined ? 'Pending' : `Level ${user.user.rank}`}</div>
                 </div>
                 <ChevronDown size={14} className="profile-trigger-chevron" />
               </button>
@@ -898,6 +901,7 @@ export default function App() {
                     <div className="dropdown-user-info">
                       <div className="dropdown-user-name">{name}</div>
                       <div className="dropdown-user-email">{user.user.email}</div>
+                      {user.user.department && <div className="dropdown-user-email" style={{ fontSize: 11 }}>{user.user.department}</div>}
                     </div>
                   </div>
                   <button className="dropdown-item" onClick={() => { setProfileModal(true); fetchProfile(); setShowProfileDropdown(false); }}>
@@ -1113,6 +1117,10 @@ export default function App() {
                       <input type="number" min="0" max="10" value={newResRank} onChange={(e) => setNewResRank(e.target.value)} required />
                     </div>
                     <div className="form-group">
+                      <label className="form-label">Department</label>
+                      <input type="text" value={newResDepartment} onChange={(e) => setNewResDepartment(e.target.value)} placeholder="e.g. Computer Science" />
+                    </div>
+                    <div className="form-group">
                       <label className="form-label">Slot Duration (min)</label>
                       <input type="number" value={newResDuration} onChange={(e) => setNewResDuration(e.target.value)} required />
                     </div>
@@ -1163,6 +1171,7 @@ export default function App() {
                         <div className="resource-meta">
                           <span><Zap size={12} /> {res.quantity} available</span>
                           <span><Clock size={12} /> {res.slotDurationMinutes}m slots</span>
+                          {res.department && <span className="badge badge-slate">{res.department}</span>}
                         </div>
                         <div className="resource-actions">
                           <button onClick={() => openEditResource(res)} className="btn btn-ghost btn-sm" style={{ padding: '4px 8px' }}>
@@ -1222,6 +1231,10 @@ export default function App() {
                             <input type="number" min="0" max="10" value={editResRank} onChange={(e) => setEditResRank(e.target.value)} required />
                           </div>
                           <div className="form-group">
+                            <label className="form-label">Department</label>
+                            <input type="text" value={editResDepartment} onChange={(e) => setEditResDepartment(e.target.value)} />
+                          </div>
+                          <div className="form-group">
                             <label className="form-label">Slot Duration (min)</label>
                             <input type="number" value={editResDuration} onChange={(e) => setEditResDuration(e.target.value)} required />
                           </div>
@@ -1247,7 +1260,7 @@ export default function App() {
                     <label className="form-label">Select Resource</label>
                     <select value={selectedResId} onChange={(e) => setSelectedResId(e.target.value)}>
                       <option value="">Choose Resource...</option>
-                      {resources.map(r => (<option key={r._id} value={r._id}>{r.name} ({r.quantity} available)</option>))}
+                      {resources.map(r => (<option key={r._id} value={r._id}>{r.name} {r.department ? `[${r.department}]` : ''} ({r.quantity} available)</option>))}
                     </select>
                   </div>
                   <div className="form-group">
@@ -1623,6 +1636,7 @@ export default function App() {
                             </div>
                             <div className="request-email">{m.email}</div>
                             <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
+                              {m.department && <span className="badge badge-slate">{m.department}</span>}
                               <span className={`badge ${rankBadge}`}>{roleName} {roleRank !== null && roleRank !== undefined && `(Lvl ${roleRank})`}</span>
                               <span className={`badge ${m.status === 'active' ? 'badge-emerald' : 'badge-gold'}`}>
                                 {m.status === 'active' ? 'Active' : m.status === 'pending' ? 'Pending' : 'Rejected'}
@@ -1721,6 +1735,12 @@ export default function App() {
                       {user?.user?.roleName || 'Unassigned'}
                     </span>
                   </div>
+                  {user?.user?.department && (
+                    <div className="profile-detail-row">
+                      <span className="profile-detail-label">Department</span>
+                      <span className="badge badge-slate">{user.user.department}</span>
+                    </div>
+                  )}
                   <div className="profile-detail-row">
                     <span className="profile-detail-label">Access Level</span>
                     <span className={`badge ${getRankBadgeClass(user?.user?.rank)}`}>

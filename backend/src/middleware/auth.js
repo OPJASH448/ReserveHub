@@ -34,6 +34,7 @@ const authenticateToken = async (req, res, next) => {
         orgId: payload.isSuperAdmin ? null : user.orgId,
         roleLevelId: (!payload.isSuperAdmin && user.roleLevelId) ? user.roleLevelId._id : null,
         rank: (!payload.isSuperAdmin && user.roleLevelId) ? user.roleLevelId.rank : null,
+        department: payload.isSuperAdmin ? '' : (user.department || ''),
         isSuperAdmin: !!payload.isSuperAdmin
       };
       next();

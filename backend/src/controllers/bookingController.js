@@ -65,6 +65,11 @@ const holdSlot = async (req, res) => {
       return res.status(403).json({ error: 'Access denied: Insufficient authority' });
     }
 
+    // Verify department match (OrgAdmin bypass)
+    if (rank !== 0 && resource.department && req.user.department && resource.department !== req.user.department) {
+      return res.status(403).json({ error: `Access denied: Resource belongs to "${resource.department}" department, you are in "${req.user.department}"` });
+    }
+
     // Calculate slotEnd based on duration
     const parsedEnd = new Date(parsedStart.getTime() + resource.slotDurationMinutes * 60 * 1000);
 

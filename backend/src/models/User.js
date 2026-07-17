@@ -6,6 +6,7 @@ const UserSchema = new mongoose.Schema({
   passwordHash: { type: String, required: true },
   orgId: { type: mongoose.Schema.Types.ObjectId, ref: 'Org', default: null },
   roleLevelId: { type: mongoose.Schema.Types.ObjectId, ref: 'RoleLevel', default: null },
+  department: { type: String, trim: true, default: '' },
   status: { type: String, enum: ['pending', 'active', 'rejected'], default: 'pending' },
   isSuperAdmin: { type: Boolean, default: false }
 }, { timestamps: true });

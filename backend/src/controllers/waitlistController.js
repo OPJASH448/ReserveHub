@@ -26,6 +26,11 @@ const joinWaitlist = async (req, res) => {
       return res.status(403).json({ error: 'Access denied: Insufficient authority' });
     }
 
+    // Verify department match (OrgAdmin bypass)
+    if (rank !== 0 && resource.department && req.user.department && resource.department !== req.user.department) {
+      return res.status(403).json({ error: `Access denied: Resource belongs to "${resource.department}" department, you are in "${req.user.department}"` });
+    }
+
     // Validate that the slot is actually booked/held (i.e. occupied)
     const occupied = await Booking.findOne({
       resourceId,

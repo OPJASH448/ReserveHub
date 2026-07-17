@@ -7,6 +7,7 @@ const ResourceSchema = new mongoose.Schema({
   image: { type: String, default: '' }, // Image URL or data
   quantity: { type: Number, required: true, default: 1 }, // Available quantity
   maxAllowedRank: { type: Number, required: true }, // Authority ceiling (e.g. users with rank <= maxAllowedRank can book)
+  department: { type: String, trim: true, default: '' },
   slotDurationMinutes: { type: Number, required: true, default: 60 },
   operatingHours: {
     start: { type: String, required: true }, // e.g. "09:00"

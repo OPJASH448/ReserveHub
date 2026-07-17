@@ -4,7 +4,7 @@ const Waitlist = require('../models/Waitlist');
 const User = require('../models/User');
 
 const createResource = async (req, res) => {
-  const { name, description, image, quantity, maxAllowedRank, slotDurationMinutes, operatingHours } = req.body;
+  const { name, description, image, quantity, maxAllowedRank, department, slotDurationMinutes, operatingHours } = req.body;
   const { orgId, userId } = req.user;
 
   const qty = Number(quantity);
@@ -23,6 +23,7 @@ const createResource = async (req, res) => {
       image: image || '',
       quantity: qty,
       maxAllowedRank,
+      department: department || req.user.department || '',
       slotDurationMinutes,
       operatingHours,
       createdBy: userId
@@ -36,10 +37,18 @@ const createResource = async (req, res) => {
 };
 
 const getResources = async (req, res) => {
-  const { orgId } = req.user;
+  const { orgId, department, rank } = req.user;
 
   try {
-    const resources = await Resource.find({ orgId });
+    // OrgAdmin sees all, others see their department + department-less resources
+    const filter = { orgId };
+    if (rank !== 0) {
+      filter.$or = [
+        { department: department || '' },
+        { department: { $in: ['', null] } }
+      ];
+    }
+    const resources = await Resource.find(filter);
     res.json(resources);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch resources' });
@@ -90,6 +99,7 @@ const updateResource = async (req, res) => {
     if (image !== undefined) resource.image = image;
     if (quantity !== undefined) resource.quantity = quantity;
     if (maxAllowedRank !== undefined) resource.maxAllowedRank = maxAllowedRank;
+    if (department !== undefined) resource.department = department;
     if (slotDurationMinutes !== undefined) resource.slotDurationMinutes = slotDurationMinutes;
     if (operatingHours !== undefined) resource.operatingHours = operatingHours;
 
